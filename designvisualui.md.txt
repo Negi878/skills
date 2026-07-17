@@ -1,0 +1,206 @@
+---
+name: design-visual-ui
+description: >
+  Use when creating, styling, or reviewing any visual UI screen or component
+  — buttons, cards, forms, dashboards, landing pages, spacing, typography,
+  color palettes, shadows, or overall layout. Trigger on requests like "cria
+  uma tela para X", "deixa essa interface mais bonita/profissional", "essa
+  tela está com aparência amadora/genérica", "ajusta o layout/espaçamento",
+  "define uma paleta de cores", or any request to design or improve visual
+  appearance — even if the request doesn't explicitly say "design" or "UI".
+---
+
+# Design Visual de Interface — Regras Objetivas
+
+Regras diretas e aplicáveis por uma IA de código para decisões de espaçamento,
+tipografia, cor e hierarquia visual. O objetivo é remover decisão arbitrária
+("esse azul ou aquele azul?") e produzir consistência sem exigir julgamento
+estético caso a caso.
+
+## Princípio central
+
+**Hierarquia visual resolve mais problema do que estilo.** A maior parte do
+que faz uma interface parecer "amadora" não é escolha de cor ou fonte — é
+falta de hierarquia: tudo no mesmo peso, competindo por atenção. Antes de
+qualquer decisão de estilo, definir o que é primário, secundário e terciário
+em cada tela.
+
+## Anti-padrões específicos a evitar
+
+Instrução genérica tipo "deixa bonito" não funciona. Estes são sintomas
+concretos de tela com aparência amadora ou genérica de IA — verificar contra
+cada um antes de considerar a tela pronta:
+
+- Gradiente roxo-pra-azul (ou qualquer gradiente decorativo sem propósito)
+  usado como plano de fundo genérico — é o clichê visual mais reconhecível
+  de interface gerada por IA sem direção de design.
+- Espaçamento uniforme em todo canto (tudo com o mesmo `padding`/`margin`)
+  em vez de espaçamento que varia com intenção — elementos relacionados mais
+  próximos entre si, grupos diferentes mais separados.
+- Sombra genérica (`box-shadow` padrão do framework) aplicada em tudo sem
+  pensar em qual elemento realmente precisa parecer "elevado".
+- Texto cinza claro (`#999`, `#ccc`) usado indiscriminadamente pra qualquer
+  coisa "secundária", sem considerar se ainda está legível e se o contraste
+  é apropriado pro fundo.
+- Cantos arredondados com valores diferentes em componentes similares da
+  mesma tela (um card com `rounded-lg`, outro com `rounded-xl`) — quebra
+  consistência sem necessidade.
+- Ícone decorativo do mesmo pacote genérico usado sem checar se o estilo
+  (outline vs. filled, peso de traço) combina com o resto da interface.
+- Botão primário e botão secundário com o mesmo peso visual — quando tudo
+  parece igualmente importante, o usuário não sabe qual ação é a esperada.
+
+## 1. Hierarquia
+
+- Nunca usar só tamanho de fonte pra criar hierarquia. Combinar peso da
+  fonte e cor é mais eficaz e evita títulos gigantes e texto secundário
+  ilegível.
+- Escala prática de peso pra interface: **peso normal (400–500)** pra texto
+  padrão, **peso mais pesado (600–700)** só pra ênfase. Evitar pesos abaixo
+  de 400 em texto de interface — funcionam em títulos grandes, mas ficam
+  difíceis de ler em tamanhos pequenos.
+- Escala prática de cor pra texto: cor escura pra conteúdo primário, cinza
+  médio pra secundário, cinza claro pra terciário. Três níveis já bastam
+  pra maioria das telas.
+- **Nunca usar cinza claro sobre fundo colorido** pra "apagar" o texto — o
+  efeito desejado é reduzir contraste, não simplesmente ficar cinza. Em
+  fundo colorido, isso se consegue pegando a MESMA cor de base do fundo e
+  ajustando saturação/luminosidade, não jogando um cinza genérico ou branco
+  com opacidade reduzida (que fica com aparência de elemento desabilitado).
+- Quando um elemento não está se destacando o suficiente mesmo depois de
+  tentar enfatizá-lo, o problema geralmente é o oposto: os elementos ao
+  redor estão competindo demais. Em vez de aumentar o destaque do elemento
+  principal, reduzir o peso visual dos elementos secundários ao redor.
+- Evitar o formato "rótulo: valor" pra tudo. Se o formato do dado já deixa
+  claro o que é (email, telefone, preço), não precisa de rótulo. Quando
+  precisar, prefira embutir o rótulo no próprio valor ("12 restantes em
+  estoque" em vez de "Estoque: 12") em vez de rótulo separado.
+
+## 2. Espaçamento e tamanho
+
+- Nunca escolher espaçamento por tentativa e erro pixel a pixel. Definir uma
+  escala fixa de valores permitidos ANTES de desenhar qualquer tela, e usar
+  só esses valores.
+- Uma escala linear (tipo "tudo múltiplo de 4px") não funciona bem sozinha —
+  a diferença relativa entre valores pequenos precisa ser maior que entre
+  valores grandes. Regra prática: **nenhum valor da escala deve ficar a
+  menos de ~25% de diferença do vizinho.** Isso significa que perto de 12px
+  os saltos são pequenos (12 → 16 → 20), e perto de 200px os saltos são
+  maiores (160 → 200 → 256).
+- Base recomendada pra construir a escala: 16px (tamanho padrão de fonte de
+  navegador, divide bem por múltiplos).
+- Uma interface não precisa preencher toda a largura da tela disponível. Dar
+  a cada elemento só o espaço que ele precisa é melhor do que esticar tudo
+  pra combinar com outro elemento largo (como um header full-width).
+- Em telas responsivas, é mais fácil desenhar a versão mobile primeiro num
+  espaço realmente restrito (algo em torno de 400px de largura) e depois
+  expandir pra telas maiores, do que desenhar largo primeiro e tentar
+  encolher depois.
+
+## 3. Tipografia
+
+- Definir uma escala de tamanhos de fonte fixa e usar só esses valores —
+  nunca ajustar tamanho de fonte "no olho" um pixel de cada vez.
+- Uma escala baseada em razão matemática pura (ex.: 1.25 ou golden ratio)
+  costuma ser boa demais pra conteúdo longo mas ruim pra interface — os
+  saltos ficam grandes demais e faltam tamanhos intermediários que a
+  interface realmente precisa. Prefira uma escala ajustada manualmente com
+  mais degraus nos tamanhos pequenos/médios.
+- Nunca definir a escala de tamanho de fonte usando unidades relativas
+  (`em`) aninhadas — o tamanho computado real muda dependendo do elemento
+  pai e deixa de bater com a escala definida. Usar unidades absolutas
+  (`px`/`rem` a partir da raiz) para a escala em si.
+- **Line-height (altura de linha) é proporcional, não fixo.** Texto maior
+  precisa de menos espaço entre linhas (títulos grandes podem usar
+  line-height próximo de 1); texto menor e blocos de texto mais largos
+  precisam de mais espaço entre linhas (line-height entre 1.5 e 2). Line-
+  height e tamanho de fonte são inversamente proporcionais.
+- Manter a largura da coluna de texto controlada — texto corrido linha
+  muito longa cansa o olho e faz perder a linha ao voltar pra esquerda.
+- Alinhar a maior parte do texto à esquerda (pra idiomas ocidentais).
+  Centralizar só títulos curtos ou blocos independentes de até 2-3 linhas —
+  texto corrido mais longo centralizado sempre fica pior.
+- Números em tabela: sempre alinhados à direita, pra que a casa decimal
+  fique na mesma posição visual em todas as linhas e facilite comparação.
+- Nem todo link precisa de cor chamativa. Em interfaces onde quase tudo é
+  clicável, usar peso de fonte mais pesado ou cor levemente mais escura em
+  vez de cor de destaque forte em todo link — reserva o destaque visual
+  forte pra ações realmente importantes.
+
+## 4. Cor
+
+- Trabalhar com cor em HSL (matiz, saturação, luminosidade) em vez de
+  hex/RGB direto. HSL deixa muito mais fácil criar variações relacionadas
+  de uma mesma cor de forma previsível (mesma matiz, ajustando só
+  luminosidade/saturação), o que hex não permite de forma intuitiva.
+- Um projeto real precisa de mais tons de cada cor do que parece à primeira
+  vista — geralmente entre 8 e 10 variações de luminosidade por cor
+  (incluindo os tons neutros/cinza), pra cobrir estado normal, hover,
+  desabilitado, fundo suave, texto sobre fundo colorido, etc. Definir essa
+  paleta de tons antes de começar a desenhar telas, não sob demanda.
+- Cuidado ao escurecer/clarear uma cor: reduzir a luminosidade sem também
+  reduzir a saturação faz a cor parecer "suja"; o ajuste correto é mexer
+  nas duas propriedades juntas ao criar tons mais escuros ou mais claros de
+  uma mesma cor base.
+- Tons de cinza não precisam ser perfeitamente neutros — misturar uma leve
+  tonalidade da cor principal da marca nos cinzas cria mais coesão visual
+  do que usar um cinza puramente neutro isolado da paleta de cor.
+- Contraste acessível (WCAG) não é limitação estética — é possível manter
+  uma paleta vibrante e ainda cumprir contraste mínimo ajustando luminosidade
+  e saturação com cuidado, em vez de simplesmente escurecer tudo.
+- Nunca usar só cor pra comunicar informação importante (erro, sucesso,
+  status) — sempre combinar com um segundo sinal (ícone, texto, posição),
+  porque parte dos usuários não distingue bem a diferença de cor.
+
+## 5. Profundidade (sombra e elevação)
+
+- Sombras devem simular consistentemente uma única fonte de luz (geralmente
+  vindo de cima) em toda a interface — misturar direções de sombra diferentes
+  entre elementos quebra a ilusão de profundidade.
+- Usar a intensidade da sombra pra comunicar elevação relativa: elementos
+  "mais próximos" do usuário (modais, dropdowns, cards em hover) recebem
+  sombra mais forte e mais espalhada; elementos "mais no fundo" recebem
+  sombra sutil ou nenhuma.
+- Uma sombra bem construída costuma ter duas camadas: uma sombra mais
+  próxima e escura (simula contato direto com a superfície) e uma mais
+  distante e suave (simula a luz ambiente ao redor) — sobrepor as duas dá
+  resultado mais realista do que uma sombra única genérica.
+- Profundidade não depende só de sombra — sobrepor levemente elementos uns
+  aos outros (um card que invade a borda do elemento atrás dele, por
+  exemplo) também comunica camadas, inclusive em designs mais flat/simples.
+
+## 6. Acabamento
+
+- Elementos com estado vazio (lista sem itens, busca sem resultado, painel
+  recém-criado sem dado ainda) precisam de tratamento visual próprio — nunca
+  deixar como um espaço em branco genérico ou uma mensagem de erro solta.
+  Vale a pena desenhar esse estado com a mesma atenção que a tela "cheia".
+- Preferir menos bordas divisórias entre elementos. Muitas vezes o espaço em
+  branco sozinho já separa visualmente os blocos sem precisar de uma linha
+  — bordas em excesso deixam a interface com aparência de planilha.
+- Cor de destaque em elementos monótonos (como uma borda colorida de acento
+  numa lateral de card) é um recurso barato pra dar identidade visual sem
+  redesenhar a tela inteira.
+
+## Como aplicar num pedido de tela nova
+
+Ao pedir uma tela nova pra IA, especificar explicitamente:
+1. Qual elemento é primário, secundário e terciário nessa tela (força a
+   hierarquia a ser pensada antes do visual)
+2. Que a escala de espaçamento e tipografia do projeto deve ser respeitada
+   (se o projeto já tem uma definida — se não tem, pedir pra definir uma
+   antes de desenhar a primeira tela)
+3. Que estados vazios/de erro dessa tela também precisam ser desenhados,
+   não só o estado "feliz" com dado preenchido
+
+## Checklist de revisão de uma tela existente
+
+- [ ] Dá pra identificar o que é mais importante na tela em menos de 2
+      segundos olhando, ou tudo compete igualmente por atenção?
+- [ ] A hierarquia usa peso e cor, não só tamanho de fonte?
+- [ ] Espaçamento segue uma escala consistente, ou tem valores arbitrários
+      espalhados?
+- [ ] Line-height é proporcional ao tamanho da fonte e à largura da coluna
+      de texto?
+- [ ] Existe estado vazio/erro desenhado, ou a tela só existe "cheia"?
+- [ ] Sombras (se houver) apontam pra uma única direção de luz consistente?

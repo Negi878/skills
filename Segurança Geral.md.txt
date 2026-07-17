@@ -1,0 +1,181 @@
+---
+name: seguranca-geral
+description: >
+  Use when writing code that handles user input, file uploads, external
+  data, API keys/secrets, or public endpoints — forms, search fields,
+  comment boxes, file upload features, third-party API integration, or any
+  endpoint that isn't behind strict access control. Trigger on requests
+  like "valida esse formulário", "protege essa rota contra abuso", "como
+  guardar essa chave de API com segurança", "cria o upload de arquivo",
+  "essa rota está recebendo muita requisição/spam", or any request
+  involving data coming from outside the application's own code.
+---
+
+# Segurança Geral — Regras Objetivas
+
+Regras para proteger a aplicação contra os riscos mais comuns e mais
+explorados em produção — a maioria dos ataques reais não usa técnica
+sofisticada, usa falha básica que passou despercebida (campo sem validação,
+chave exposta, rota sem limite de uso). Esta skill complementa
+`autenticacao-autorizacao` (que cobre identidade e permissão) focando em
+tudo que pode dar errado depois que o usuário já está autenticado, ou antes
+de precisar estar.
+
+## Princípio central
+
+**Todo dado que vem de fora da aplicação é hostil até prova em contrário.**
+Isso inclui campo de formulário, parâmetro de URL, corpo de requisição de
+API, nome de arquivo enviado, e até resposta de outro serviço externo.
+Validar e tratar esse dado no servidor, nunca confiar que validação feita
+no cliente (navegador/app) seja suficiente — validação no cliente é só
+conveniência de UX, não proteção real, porque qualquer pessoa pode chamar a
+API diretamente ignorando o app.
+
+## 1. Injeção (SQL, NoSQL, comando)
+
+- Nunca construir consulta ao banco concatenando texto do usuário
+  diretamente na query — usar sempre consulta parametrizada (prepared
+  statement) ou uma camada de ORM que já faz isso por padrão. Concatenar
+  entrada de usuário numa query é a causa mais direta de vazamento total de
+  banco de dados.
+- Mesmo usando ORM, ter cuidado com trechos que permitem "query bruta"
+  (raw query) — se o ORM oferece essa opção pra casos avançados, ela tem
+  a mesma vulnerabilidade de concatenação manual se receber dado do usuário
+  sem tratamento.
+- Validação de entrada deve ser feita no servidor com lista de permissão
+  (definir o que é aceito), não lista de bloqueio (tentar prever tudo que é
+  perigoso) — é mais fácil e mais seguro dizer "só aceito letra, número e
+  hífen nesse campo" do que tentar barrar cada caractere malicioso possível.
+
+## 2. Cross-site scripting (XSS)
+
+- Todo dado vindo de usuário que será exibido de volta na tela (comentário,
+  nome de perfil, texto livre) deve ser tratado como texto puro, nunca
+  interpretado como código/HTML pelo navegador — a maioria dos frameworks
+  modernos (React, Vue) já escapa isso por padrão ao renderizar texto; o
+  risco real está em qualquer ponto do código que insere HTML diretamente
+  (`dangerouslySetInnerHTML`, `innerHTML`, ou equivalente) sem sanitizar
+  antes.
+- Se a aplicação genuinamente precisa aceitar HTML de usuário (editor de
+  texto rico, por exemplo), sanitizar com uma biblioteca própria pra isso
+  antes de renderizar — nunca tentar filtrar manualmente com substituição
+  de texto, porque é praticamente impossível cobrir todos os vetores de
+  ataque manualmente.
+
+## 3. Autorização a nível de objeto (IDOR / BOLA)
+
+Essa é hoje a categoria de vulnerabilidade mais comum encontrada em
+aplicações reais — mais do que injeção. Acontece quando a aplicação checa
+se o usuário está autenticado, mas não checa se ele tem permissão sobre o
+registro específico que está pedindo.
+
+- Toda rota que recebe um identificador de registro (`/pedidos/123`,
+  `/documentos/456`) deve verificar explicitamente se o usuário autenticado
+  tem permissão sobre AQUELE registro específico — nunca assumir que "está
+  logado" é suficiente pra acessar qualquer ID que ele digitar na URL.
+- Testar essa proteção de forma direta: autenticado como usuário A, tentar
+  acessar um registro que pertence ao usuário B trocando só o ID na
+  requisição. Se funcionar, é uma falha de autorização a nível de objeto —
+  a falha mais comum e mais séria encontrada em aplicações reais hoje.
+- Se o banco usa RLS (ver skill de autenticação/autorização), essa camada
+  já ajuda bastante, mas não substitui checar explicitamente em rotas
+  customizadas/funções que rodam com privilégio elevado.
+
+## 4. Limitação de taxa (rate limiting) e proteção contra abuso
+
+- Toda rota que executa ação sensível ou custosa (login, envio de e-mail,
+  criação de conta, geração de conteúdo via IA) precisa de limite de
+  quantas vezes pode ser chamada num período de tempo, por usuário ou por
+  IP — sem isso, um script automatizado pode tentar milhares de senhas,
+  spammar cadastro, ou consumir seu orçamento de API de IA em minutos.
+- Diferenciar limite por endpoint conforme o risco: rota de login tolera
+  limite mais agressivo (poucas tentativas por minuto) do que uma rota de
+  leitura de conteúdo público.
+- Retornar mensagem de limite excedido sem revelar detalhe interno (não
+  dizer "usuário existe mas senha errada" vs. "usuário não existe" —
+  mensagem genérica de "credenciais inválidas" evita que um atacante use a
+  diferença de resposta pra descobrir quais e-mails estão cadastrados).
+
+## 5. Gerenciamento de segredo e chave de API
+
+- Nenhuma chave de API, senha de banco, ou segredo de qualquer tipo deve
+  aparecer em código que roda no navegador/cliente, nem ser commitado em
+  repositório de código — mesmo em projeto privado, porque vazamentos
+  acontecem por engano (repositório que vira público, cópia de código
+  compartilhada).
+- Toda chave sensível deve ficar em variável de ambiente do lado servidor,
+  nunca em constante no código-fonte.
+- Se uma chave for exposta acidentalmente (aconteceu, foi commitada, foi
+  vista em log), tratar como comprometida e revogar/gerar nova
+  imediatamente — não é suficiente só remover do código depois, porque
+  histórico de versionamento e cópias já existem.
+
+## 6. Upload de arquivo
+
+- Nunca confiar na extensão do nome do arquivo enviado, nem no tipo
+  declarado pelo navegador (`Content-Type`) — ambos podem ser forjados
+  facilmente. Validar o tipo real do arquivo pelo conteúdo (assinatura de
+  arquivo) quando o tipo importa pra segurança.
+- Definir um limite de tamanho de arquivo aceito, e nunca permitir upload
+  de tipo executável (`.exe`, `.sh`, `.php`, etc.) em campo que não é
+  especificamente pra isso.
+- Armazenar arquivo enviado por usuário fora da pasta que serve código da
+  aplicação, e servir de volta com nome gerado pelo sistema (não o nome
+  original do arquivo, que pode conter caractere malicioso ou tentar
+  sobrescrever outro arquivo).
+
+## 7. Dependências e componentes de terceiros
+
+- Manter bibliotecas e pacotes atualizados regularmente — boa parte das
+  falhas exploradas em produção não é código próprio, é uma
+  vulnerabilidade já conhecida e corrigida numa versão nova de uma
+  biblioteca que o projeto ainda não atualizou.
+- Antes de adicionar uma biblioteca nova ao projeto, checar se ela é
+  mantida ativamente (não abandonada) — dependência sem manutenção
+  acumula vulnerabilidade sem correção disponível.
+
+## 8. Registro de erro e log
+
+- Nunca expor detalhe técnico de erro (stack trace, query SQL, estrutura
+  interna) diretamente na resposta que o usuário final vê — isso ajuda um
+  atacante a entender a estrutura interna da aplicação. Mostrar mensagem
+  genérica ao usuário e guardar o detalhe completo só no log do servidor.
+- Nunca registrar senha, token, ou dado sensível de pagamento em log, nem
+  mesmo temporariamente durante debug — log costuma ter retenção longa e
+  acesso mais amplo do que o banco de dados principal.
+
+## Anti-padrões específicos a evitar
+
+- Consulta ao banco montada por concatenação de string com dado do usuário
+- Rota que aceita um ID na URL e retorna o registro sem checar se pertence
+  ao usuário autenticado
+- Chave de API visível em código front-end ou em variável exposta ao
+  navegador
+- Campo de upload que aceita qualquer extensão de arquivo sem validação
+- Mensagem de erro de login que revela se o e-mail existe ou não no sistema
+- Rota de criação de conta ou envio de e-mail sem nenhum limite de
+  frequência de uso
+- Log de aplicação contendo senha, token de sessão, ou número de cartão
+
+## Como aplicar num pedido que envolve dado externo
+
+```
+Vou implementar [funcionalidade que recebe dado de fora]. Verificar:
+1. Todo dado de entrada é validado no servidor (não só no cliente)?
+2. Se toca o banco, usa consulta parametrizada, nunca concatenação?
+3. Se retorna um registro por ID, checa se pertence ao usuário autenticado?
+4. Se é uma ação sensível/custosa, tem limite de frequência de uso?
+5. Alguma chave ou segredo está exposto no código que roda no cliente?
+```
+
+## Checklist de revisão de segurança
+
+- [ ] Nenhuma query concatena entrada de usuário diretamente na string SQL?
+- [ ] Toda rota que retorna um recurso por ID verifica posse/permissão
+      sobre aquele recurso específico, não só autenticação genérica?
+- [ ] Rotas de login, cadastro, e ações custosas têm limite de frequência?
+- [ ] Nenhuma chave de API ou segredo aparece em código do lado cliente?
+- [ ] Upload de arquivo valida tipo real do conteúdo, não só extensão do
+      nome?
+- [ ] Mensagens de erro visíveis ao usuário são genéricas, sem detalhe
+      técnico interno?

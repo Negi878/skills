@@ -1,0 +1,165 @@
+---
+name: onboarding-ativacao
+description: >
+  Use when designing or reviewing the first-time user experience — signup
+  flow, welcome screens, product tours, empty states, checklists, or any
+  sequence meant to get a new user to their first meaningful result.
+  Trigger on requests like "cria o onboarding desse app", "como faço o
+  usuário novo entender o produto rápido", "essa tela de boas-vindas está
+  fraca", "taxa de ativação está baixa", "usuário some depois do cadastro",
+  or any request involving a new user's first session.
+---
+
+# Onboarding e Ativação — Do Cadastro ao Primeiro Valor Real
+
+Regras para estruturar a experiência de um usuário novo entre o primeiro
+contato e o momento em que ele percebe o valor real do produto (o "momento
+aha"). Aplica-se a qualquer produto com fluxo de entrada — não é sobre
+fazer tour de funcionalidade, é sobre velocidade até o valor.
+
+## Princípio central
+
+**O produto deve entregar valor antes de pedir compromisso, não depois.**
+A maior parte da desistência acontece na primeira sessão, entre o cadastro
+e o primeiro resultado útil. Toda decisão de onboarding deve ser avaliada
+por uma pergunta: isso acelera o usuário até o primeiro valor real, ou é
+um obstáculo entre ele e esse valor?
+
+## 1. Definir o "momento aha" antes de desenhar qualquer tela
+
+Antes de desenhar uma única tela de onboarding, identificar exatamente qual
+ação específica faz o usuário perceber o valor do produto pela primeira vez
+(criar o primeiro item, ver o primeiro resultado, completar a primeira
+tarefa real — não "ver o dashboard"). Toda decisão de onboarding depois
+disso se mede pela distância até essa ação.
+
+- Sem essa definição clara, onboarding vira "mostrar tudo" em vez de
+  "chegar rápido no que importa" — e sem meta clara não dá pra saber se uma
+  mudança no fluxo ajudou ou atrapalhou.
+
+## 2. Adiar cadastro até depois do primeiro sinal de valor, quando possível
+
+Pedir criação de conta completa antes do usuário ver qualquer valor é a
+barreira mais alta e mais desnecessária do fluxo de entrada — quando o
+produto permite, deixar o usuário experimentar uma versão mínima antes de
+pedir cadastro, e pedir só o mínimo necessário (e-mail) no primeiro
+momento, deixando dados adicionais pra depois.
+
+- Se o cadastro completo for realmente necessário logo de início (ex.:
+  produto que exige autenticação pra funcionar), pelo menos reduzir os
+  campos ao mínimo absoluto — cada campo a mais reduz conversão de forma
+  desproporcional ao valor que aquele campo entrega naquele momento.
+- Regra prática: qualquer campo do formulário de entrada que não é
+  necessário pra desbloquear o primeiro valor deve ser adiado pra um
+  momento posterior, quando o usuário já tiver motivo pra investir mais
+  informação.
+
+## 3. Uma ação por vez, no momento em que ela é relevante
+
+A memória de trabalho humana tem limite — apresentar muitas
+funcionalidades de uma vez na primeira sessão não ensina nada, só cria
+sobrecarga e frustração. Onboarding eficaz introduz uma coisa de cada vez,
+no momento em que ela passa a ser relevante pro que o usuário está fazendo,
+não tudo de uma vez no primeiro login.
+
+- Preferir uma única ação clara no primeiro momento ("faça X") a um tour
+  guiado que explica cada canto da interface antes do usuário ter feito
+  qualquer coisa.
+- Introduzir funcionalidades secundárias de forma progressiva e
+  contextual — apresentar o recurso de convidar colega quando fizer sentido
+  no fluxo, não como passo 4 de um tour inicial genérico.
+
+## 4. Eliminar todo passo que não avança até o momento aha
+
+Boa parte dos passos de onboarding tradicional (tour completo de feature,
+formulário de preferências longo, tutorial obrigatório) não avança o
+usuário até o primeiro valor — só atrasa. Antes de manter qualquer etapa,
+perguntar se removê-la atrapalharia o usuário a chegar no momento aha. Se a
+resposta for não, remover.
+
+- Etapas de personalização (pergunta sobre objetivo, papel, preferência)
+  só valem a pena se o resultado dela muda de fato o que o usuário vê a
+  seguir — personalização decorativa que não altera nada do fluxo real é
+  fricção disfarçada de cuidado.
+
+## 5. Usar estado vazio como orientação, não como vazio
+
+Uma tela ou lista sem conteúdo (nenhum projeto criado, nenhum dado ainda)
+é uma oportunidade de guiar a próxima ação, não um espaço em branco. Um
+estado vazio bem desenhado mostra claramente qual é o próximo passo pra
+preencher aquele espaço.
+
+- Preferir estado vazio com ação sugerida clara (botão, template, exemplo
+  pré-preenchido) a uma tela genuinamente vazia com uma frase solta tipo
+  "nenhum item encontrado".
+
+## 6. Tornar o progresso visível
+
+Checklist ou barra de progresso — mostrando quantos passos faltam pro
+usuário estar "pronto" — aumenta a chance de conclusão porque dá uma meta
+concreta e visível, em vez de uma sequência de telas sem fim aparente.
+
+- Aplicar quando o onboarding tiver mais de 2-3 etapas reais. Pra fluxo de
+  uma etapa só, progresso visível é desnecessário.
+- Progresso já concluído automaticamente (ex.: "criar workspace" já
+  marcado porque o sistema criou por padrão) reduz o trabalho percebido e
+  aumenta a sensação de avanço logo no início.
+
+## 7. Prova social funciona como apoio, não como distração
+
+Depoimento, logo de cliente, ou número de usuários ajuda a reduzir
+insegurança durante o onboarding — mas só quando aparece perto de um ponto
+real de fricção ou dúvida (ex.: antes de conectar um dado sensível, antes
+de pagar), nunca como elemento isolado competindo com a ação principal.
+
+- Manter estatísticas e depoimentos atualizados — prova social visivelmente
+  desatualizada tem o efeito oposto do pretendido.
+
+## 8. Medir a métrica certa, não só a taxa de conclusão do tour
+
+Taxa de conclusão de onboarding não é o mesmo que taxa de ativação. A
+métrica que importa é: quantos usuários chegaram no momento aha, e quanto
+tempo levou. Um onboarding "100% completo" que não leva ao momento aha não
+é sucesso.
+
+- Ao avaliar um fluxo de onboarding, sempre checar se a base usada pra
+  calcular a métrica (o denominador) está correta — uma taxa de adoção
+  baixa pode significar produto ruim, ou pode significar que a métrica está
+  sendo calculada sobre o público errado.
+
+## Anti-padrões específicos a evitar
+
+- Tour guiado que explica 8-10 funcionalidades em sequência antes do
+  usuário fazer qualquer coisa no produto
+- Formulário de cadastro completo (nome, empresa, telefone, cargo) exigido
+  antes de qualquer demonstração de valor
+- Pergunta de personalização cujo resultado não muda nada no fluxo seguinte
+- Estado vazio com só uma frase, sem ação sugerida
+- Prova social genérica e desatualizada, sem relação com o momento de
+  dúvida em que aparece
+- Medir sucesso do onboarding só pela taxa de conclusão de um tour, sem
+  checar se o usuário chegou no momento aha de fato
+
+## Como aplicar num pedido de onboarding novo
+
+```
+Quero desenhar o onboarding de [produto/feature]. Antes de qualquer tela:
+1. Qual é o momento aha específico — a ação exata que mostra o valor real?
+2. Qual é o menor conjunto de passos entre o primeiro contato e essa ação?
+   Liste cada passo e justifique por que ele não pode ser removido ou
+   adiado.
+3. Cadastro completo é necessário antes do momento aha, ou pode ser adiado
+   até depois?
+4. Como o progresso será mostrado, se o fluxo tiver mais de 2-3 etapas?
+```
+
+## Checklist de revisão de um onboarding existente
+
+- [ ] O momento aha está claramente definido e o fluxo foi desenhado em
+      função dele?
+- [ ] Algum campo de cadastro está sendo pedido antes de ser necessário?
+- [ ] Existe algum passo que, se removido, não atrapalharia o usuário a
+      chegar no momento aha?
+- [ ] Estados vazios sugerem uma ação clara, ou são só espaço em branco?
+- [ ] A métrica usada pra avaliar o onboarding mede ativação real, ou só
+      conclusão de um tour?

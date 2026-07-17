@@ -1,0 +1,144 @@
+---
+name: pagamento-recorrente-br
+description: >
+  Use when integrating or debugging any webhook-based payment or subscription
+  flow (Cakto, Mercado Pago, Stripe, Asaas, Pagar.me, or any other provider)
+  — including signature verification, event processing, subscription state
+  sync, and granting access to the user after payment confirmation. Trigger
+  on requests like "integrar pagamento", "webhook não está funcionando",
+  "assinatura não atualiza", "cliente pagou mas não recebeu acesso", or any
+  feature involving a webhook endpoint receiving external events.
+---
+
+# Webhooks de Pagamento — Arquitetura de Ponta a Ponta
+
+Esta skill não é específica de nenhum provedor. Webhooks de pagamento são
+sistemas de **entrega "pelo menos uma vez" (at-least-once)** — nenhum
+provedor garante entrega exatamente uma vez, então todo evento pode chegar
+duplicado, atrasado ou fora de ordem. Toda a arquitetura abaixo existe para
+lidar com essa realidade, não com o "caminho feliz".
+
+## Princípio central
+
+**Confiabilidade de webhook = 4 camadas obrigatórias, cada uma isolada:**
+verificação de assinatura → deduplicação/idempotência → processamento
+baseado em estado (não em ordem de chegada) → resposta HTTP correta pro
+provedor saber se deve reenviar ou não. Pular qualquer uma dessas camadas
+causa cobrança duplicada, acesso não liberado, ou brecha de segurança.
+
+## 1. Verificação de assinatura (segurança, antes de qualquer coisa)
+
+- Todo provedor sério assina o payload com HMAC-SHA256 (ou similar). A
+  assinatura deve ser verificada **antes de fazer qualquer parsing ou
+  processamento** — inclusive antes de decidir se o evento é duplicado.
+- **Erro técnico mais comum:** verificar a assinatura contra o JSON já
+  parseado, em vez do corpo bruto (raw body) da requisição. Reserializar o
+  JSON muda espaçamento/ordem de chaves e quebra a verificação mesmo com
+  tudo correto. A assinatura sempre é calculada sobre os bytes crus da
+  requisição — o middleware de parsing de JSON não pode rodar antes da
+  verificação.
+- Incluir verificação de **timestamp** (a maioria dos provedores assina o
+  timestamp junto com o payload). Rejeitar eventos fora de uma janela de
+  tolerância (5 minutos é o padrão de mercado) — isso impede ataques de
+  replay com um webhook capturado e reenviado depois.
+- Comparar assinaturas com função de **comparação em tempo constante**
+  (ex.: `crypto.timingSafeEqual` em Node, `hmac.compare_digest` em Python) —
+  nunca com `===` ou `==` simples, que vaza timing e permite ataque de força
+  bruta byte a byte na assinatura.
+- Se a verificação falhar: responder 401/400 e logar o motivo específico
+  (assinatura ausente, timestamp expirado, assinatura não bate) — nunca
+  processar o evento mesmo assim, e nunca retornar mensagens de erro
+  genéricas demais a ponto de esconder qual dessas três coisas falhou (isso
+  ajuda seu próprio debug depois).
+
+## 2. Idempotência / deduplicação
+
+- Todo evento tem um ID único do provedor. Antes de processar qualquer
+  lógica de negócio, checar se esse ID já existe numa tabela de eventos
+  processados (índice único no banco). Se já existe, responder 200 e não
+  fazer nada — isso NÃO é um erro, é o comportamento correto.
+- O handler inteiro deve ser seguro para rodar mais de uma vez com o mesmo
+  evento (usar `upsert` em vez de `insert`, checar estado antes de disparar
+  efeitos colaterais como enviar e-mail).
+- Manter os eventos processados por um período (60–90 dias é comum) antes de
+  limpar — a maioria dos provedores para de reenviar depois de alguns dias.
+
+## 3. Responder rápido, processar depois (accept-then-queue)
+
+- O endpoint deve validar a assinatura, checar duplicidade, persistir o
+  evento cru, e responder **200 imediatamente** — sem fazer o processamento
+  pesado (atualizar múltiplas tabelas, enviar notificação, chamar API
+  externa) de forma síncrona dentro da mesma requisição.
+- Se o provedor não recebe 200 rápido o suficiente, ele conclui que a
+  entrega falhou e reenvia — criando duplicidade mesmo que seu processamento
+  interno tivesse dado certo.
+- Processamento pesado deve rodar de forma assíncrona (fila/job/background
+  worker) depois de já ter confirmado o recebimento.
+
+## 4. Semântica de status HTTP (isso decide se o provedor reenvia ou desiste)
+
+- **2xx** → "recebi, não reenvie." Usar mesmo ao ignorar um evento duplicado
+  ou um tipo de evento que você não trata.
+- **5xx ou timeout** → "estou com problema temporário, reenvie depois."
+  Usar para falhas de infraestrutura transitórias (banco fora do ar, etc.).
+- **4xx** → "não reenvie nunca mais." Reservar só para requisição malformada
+  ou falha de assinatura — nunca usar 4xx pra um erro transitório, ou você
+  perde o evento permanentemente sem perceber.
+
+## 5. Processamento baseado em estado, não em ordem de chegada
+
+- Eventos podem chegar fora de ordem (ex.: evento de "pagamento confirmado"
+  chegando depois de "assinatura cancelada" por causa de retry). Nunca
+  assumir que a ordem de chegada reflete a ordem real dos acontecimentos.
+- Modelar a assinatura como máquina de estados explícita:
+  `pendente → ativa → atrasada → cancelada` (+ `congelada`, se aplicável).
+  Cada evento mapeia para uma transição específica, e a transição só deve
+  ser aplicada se fizer sentido dado o estado atual (ex.: um evento de
+  "confirmado" que chega depois de já estar "cancelada" não deve reverter
+  o cancelamento sem checar timestamps).
+- Centralizar toda alteração de estado numa função única — nunca espalhar
+  "atualizar status do usuário" em múltiplos pontos do código.
+- A atualização do cadastro do usuário deve estar na MESMA transação de
+  banco que marca o evento como processado. Se uma falhar, a outra não pode
+  ser confirmada — senão fica um pagamento registrado com usuário nunca
+  liberado.
+
+## 6. Liberação de acesso ao produto
+
+- A liberação de acesso acontece dentro do próprio processamento do evento,
+  não depende do usuário voltar pro site.
+- Notificações (email, WhatsApp) disparam de forma assíncrona DEPOIS de já
+  ter liberado o acesso no banco — nunca façam a liberação depender do
+  sucesso da notificação.
+- Ter um job de fallback que consulta a API do provedor para status de
+  transações pendentes há mais de alguns minutos, cobrindo casos raros de
+  webhook perdido.
+
+## 7. Portabilidade entre provedores
+
+- Separar em duas camadas: **camada de provedor** (parsing do payload
+  específico + verificação de assinatura de cada plataforma) e **camada de
+  domínio** (máquina de estados + liberação de acesso, única e independente
+  de provedor). Cada provedor só traduz seu payload pro formato interno
+  comum e chama a mesma função de domínio.
+- Nunca assumir a estrutura do payload só pela documentação — provedores
+  frequentemente aninham campos-chave de forma não óbvia. Inspecionar o
+  payload real de um evento de teste antes de escrever o parsing.
+
+## Checklist de saída
+
+- [ ] Assinatura verificada contra o raw body, com comparação em tempo
+      constante, antes de qualquer parsing
+- [ ] Verificação de timestamp com janela de tolerância (proteção contra
+      replay)
+- [ ] Deduplicação por ID único do evento, com índice único no banco
+- [ ] Endpoint responde 2xx rápido; processamento pesado é assíncrono
+- [ ] Uso correto de 2xx / 4xx / 5xx conforme a semântica de retry
+- [ ] Máquina de estados de assinatura centralizada numa função só, que
+      valida a transição contra o estado atual (não assume ordem de chegada)
+- [ ] Atualização do cadastro na mesma transação do processamento do evento
+- [ ] Liberação de acesso não depende do sucesso de uma notificação
+- [ ] Fallback de consulta de status para eventos webhook perdidos
+- [ ] Camada de domínio separada da camada de provedor
+- [ ] Log estruturado de todo evento recebido, incluindo falhas de
+      verificação, com motivo específico

@@ -1,0 +1,159 @@
+---
+name: autenticacao-autorizacao
+description: >
+  Use when implementing or reviewing login, signup, password reset,
+  session handling, role-based permissions, or any access control decision
+  — who can see or modify what data. Trigger on requests like "cria o login
+  desse app", "como proteger essa rota", "só o admin pode fazer isso",
+  "como armazenar a senha do usuário", "esse usuário está vendo dado de
+  outro usuário", or any request involving user identity, permission, or
+  data access restriction.
+---
+
+# Autenticação e Autorização — Regras Objetivas
+
+Regras para decidir quem é o usuário (autenticação) e o que ele pode fazer
+ou ver (autorização) de forma segura. Erro nessa camada costuma ser
+silencioso — o app "funciona" nos testes e só revela o problema quando um
+usuário real encontra o jeito de acessar dado que não devia.
+
+## Princípio central
+
+**Negar por padrão, liberar de forma explícita.** Toda tabela, rota, ou
+ação nova começa bloqueada para todo mundo, e o acesso é liberado
+explicitamente regra por regra — nunca o inverso (começar aberto e tentar
+lembrar de fechar depois). O erro mais comum e mais grave em autorização é
+esquecer de proteger algo que devia estar protegido, e "negar por padrão"
+transforma esse esquecimento de falha de segurança em bug visível (usuário
+não vê nada em vez de ver dado de outro).
+
+## 1. Armazenamento de senha
+
+- Nunca guardar senha em texto puro, nem usar hash simples (MD5, SHA-1)
+  sozinho — usar função de hash adaptativa e com salt automático (bcrypt ou
+  Argon2). Essas funções são propositalmente lentas, o que é a defesa real
+  contra tentativa de quebrar senha em massa.
+- O "fator de trabalho" (quão lento é o hash) deve ser recalibrado
+  periodicamente conforme hardware fica mais rápido — o alvo prático é o
+  cálculo do hash levar em torno de meio a um segundo no servidor.
+- Comparação de senha/hash deve usar função seguros contra ataque de
+  tempo (comparação que sempre leva o mesmo tempo, independente de quantos
+  caracteres batem) — comparação ingênua caractere por caractere vaza
+  informação que facilita adivinhar a senha aos poucos.
+- Ao trocar de senha, sempre exigir a senha atual antes de aceitar a nova —
+  protege contra o cenário de alguém pegar uma sessão já aberta e trocar a
+  senha sem saber a original.
+
+## 2. Sessão e token
+
+- Todo identificador de sessão deve ser gerado com entropia alta o
+  suficiente pra ser impossível de adivinhar por tentativa (nunca um
+  número sequencial ou previsível).
+- O identificador de sessão deve ser renovado sempre que o nível de
+  privilégio muda — no login (de anônimo pra autenticado), ao trocar senha,
+  ao mudar papel de usuário para admin. Reusar o mesmo identificador depois
+  de uma mudança de privilégio abre brecha pra sequestro de sessão.
+- Cookie de sessão deve sempre ter os atributos de segurança ativados:
+  `HttpOnly` (impede acesso via JavaScript, mitigando XSS), `Secure`
+  (só trafega em HTTPS), e `SameSite` (mitiga ataque cross-site).
+- Exigir reautenticação (pedir senha de novo, não só checar sessão ativa)
+  antes de ações de alto risco: mudar senha, mudar e-mail, mudar dado de
+  pagamento, ou detectar login de dispositivo/local novo.
+- Ao usar JWT (token que carrega dado do usuário direto, sem consulta ao
+  banco a cada request): nunca colocar dentro do token nenhuma informação
+  que o próprio usuário poderia modificar do lado cliente. Informação usada
+  pra decidir permissão (papel/role, nível de acesso) deve vir de um campo
+  controlado só pelo servidor, nunca de metadado editável pelo usuário.
+- Lembrar que um JWT já emitido não é "atualizado" automaticamente — se o
+  papel de um usuário muda no banco, o token antigo dele continua com o
+  papel velho até expirar ou ser renovado. Definir expiração curta o
+  suficiente pra esse atraso não virar risco real.
+
+## 3. Autorização a nível de linha/registro (Row Level Security)
+
+Quando o banco é Postgres/Supabase, a forma mais robusta de garantir que um
+usuário só acesse seus próprios dados é configurar a autorização direto no
+banco (RLS), não só na lógica do backend — isso garante que a regra vale
+mesmo se algum código da aplicação esquecer de checar.
+
+- Ativar RLS bloqueia acesso a TUDO por padrão até que políticas explícitas
+  sejam criadas — esse é o comportamento correto e esperado, não um bug: se
+  uma tabela nova "não está retornando nada", verificar se ainda falta
+  criar a política de acesso, não desativar o RLS.
+- RLS controla quais LINHAS um usuário vê, mas não controla quais COLUNAS
+  ele pode alterar dentro de uma linha permitida. Um usuário autorizado a
+  atualizar sua própria linha de conta pode, sem uma camada extra, alterar
+  qualquer coluna dela — inclusive uma que nunca deveria mudar pelo
+  cliente (ex.: campo que identifica o dono original do registro). Restringir
+  isso exige negar acesso de escrita a colunas sensíveis separadamente, não
+  confiar só na política de linha.
+- Toda coluna usada dentro de uma política de RLS precisa de índice — é a
+  causa mais comum de lentidão inesperada quando RLS é ativado num projeto
+  que já tinha dado.
+- Nunca usar a chave de serviço (service role, que ignora todo RLS) em
+  código que roda no navegador/cliente — ela existe só pra tarefa
+  administrativa do lado servidor. Vazar essa chave anula toda a proteção
+  de RLS do projeto inteiro.
+- Testar política de RLS sempre pelo mesmo caminho que o usuário real usa
+  (SDK do cliente), nunca só pelo editor de SQL direto no painel — o editor
+  de SQL frequentemente ignora RLS, então uma política "testada" ali pode
+  não estar funcionando de verdade pro usuário final.
+
+## 4. Controle de acesso por papel (RBAC)
+
+- Definir o papel/permissão do usuário num lugar controlado só pelo
+  servidor (tabela própria, ou campo de metadado que só código de backend
+  pode escrever) — nunca um campo que o próprio usuário consegue editar
+  pela API normal do app.
+- Ao decidir entre checar permissão consultando uma tabela toda vez ou
+  embutir o papel dentro do token de autenticação: embutir no token é mais
+  rápido (evita uma consulta extra a cada ação) mas sofre do atraso de
+  atualização mencionado acima; consultar a tabela é sempre atual mas
+  adiciona uma consulta a mais. Pra ações de alto risco (deletar conta,
+  mudar permissão de outro usuário), preferir sempre a consulta direta
+  à tabela, não confiar só no token.
+- Aplicar o princípio de menor privilégio: todo papel novo começa com o
+  mínimo de permissão necessária pra função dele, nunca copiando as
+  permissões de um papel mais alto "por segurança/praticidade" e reduzindo
+  depois.
+
+## Anti-padrões específicos a evitar
+
+- Guardar papel/permissão de usuário num campo de metadado que a própria
+  API de atualização de perfil do usuário permite editar
+- Tabela criada sem política de RLS nenhuma, "porque por enquanto só um
+  tipo de usuário usa"
+- Chave de serviço (service role) presente em qualquer código que roda no
+  navegador ou é enviado ao cliente
+- Sessão que continua válida com o mesmo identificador depois de uma
+  mudança de senha ou de papel de usuário
+- Comparação de senha ou token feita com operador de igualdade comum em
+  vez de função de comparação seguro contra ataque de tempo
+- Confiar em papel/permissão vindo de dentro do JWT pra decidir uma ação
+  irreversível (deletar, transferir posse) sem checagem adicional no banco
+
+## Como aplicar num pedido de autenticação nova
+
+```
+Quero implementar [funcionalidade de login/permissão]. Para isso:
+1. Onde a senha/credencial será armazenada, e qual função de hash será
+   usada?
+2. Quais tabelas terão RLS ativado, e qual é a política de acesso de cada
+   uma (quem pode ler, quem pode escrever, em qual condição)?
+3. Onde o papel/permissão do usuário fica armazenado, e quem tem permissão
+   de alterar esse campo?
+4. Quais ações exigem reautenticação em vez de só sessão ativa?
+```
+
+## Checklist de revisão de autenticação/autorização existente
+
+- [ ] Toda tabela sensível tem RLS ativado com política explícita, não
+      deixada aberta por padrão?
+- [ ] A chave de serviço (service role) nunca aparece em código que roda no
+      cliente?
+- [ ] O papel/permissão do usuário vem de um campo que só o servidor
+      controla, não de um metadado editável pelo próprio usuário?
+- [ ] Sessão é renovada após troca de senha ou mudança de privilégio?
+- [ ] Colunas usadas em política de RLS têm índice?
+- [ ] Ações de alto risco (mudar senha, deletar conta, mudar permissão de
+      outro usuário) exigem reautenticação, não só sessão ativa?

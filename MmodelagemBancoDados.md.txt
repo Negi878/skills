@@ -1,0 +1,214 @@
+---
+name: modelagem-banco-dados
+description: >
+  Use when designing, reviewing, or modifying a database schema — creating
+  tables, defining primary/foreign keys, deciding relationships between
+  entities, choosing field types, or planning a migration. Trigger on
+  requests like "cria a tabela para X", "como modelar esse relacionamento",
+  "que tipo de dado devo usar nesse campo", "como estruturar o banco desse
+  projeto", "essa tabela está bagunçada", or any request involving database
+  schema, table structure, or entity relationships.
+---
+
+# Modelagem de Banco de Dados — Regras Objetivas
+
+Regras para desenhar schema de banco de dados relacional de forma sólida
+desde o início — decisão de schema errada no começo é uma das mais caras de
+corrigir depois, porque toda a aplicação (rotas, queries, lógica) passa a
+depender da estrutura.
+
+## Princípio central
+
+**Toda tabela deve representar um único assunto, e todo campo deve
+representar uma única característica atômica desse assunto.** A maioria
+dos problemas de schema (dado duplicado, inconsistência, dificuldade de
+consulta) vem de uma tabela tentando representar mais de uma coisa, ou um
+campo guardando mais de um valor.
+
+## 1. Elementos de uma tabela ideal
+
+Antes de considerar uma tabela pronta, verificar se ela atende a todos
+estes pontos:
+
+- Representa um único assunto (uma entidade ou um evento, nunca dois
+  conceitos misturados numa tabela só)
+- Tem uma chave primária definida
+- Não tem campo multivalorado (campo que guarda mais de um valor ao mesmo
+  tempo, tipo uma lista dentro de uma coluna de texto)
+- Não tem campo multiparte (campo que combina mais de uma informação, tipo
+  endereço completo numa string só em vez de rua/cidade/CEP separados)
+- Não tem campo calculado armazenado (campo cujo valor pode ser derivado de
+  outros campos não deve ser guardado como dado fixo — guardar e derivar ao
+  mesmo tempo é fonte garantida de inconsistência)
+- Não tem campo duplicado desnecessário nem redundância de dado além do
+  mínimo necessário pra manter a integridade referencial
+
+## 2. Elementos de um campo ideal
+
+- Representa uma característica distinta e atômica do assunto da tabela
+- Contém um único valor (não uma lista, não múltiplos dados concatenados)
+- Não pode ser quebrado em partes menores que fariam sentido separadas
+- É único dentro de toda a estrutura do banco (mesmo nome sempre significa
+  a mesma coisa, em qualquer tabela onde aparece)
+
+## 3. Nomenclatura
+
+- Nome de tabela: forma plural, descreve o assunto sem ambiguidade, usa o
+  mínimo de palavras necessário pra ficar claro, nunca usa abreviação ou
+  sigla que não seja universalmente óbvia.
+- Nome de campo: forma singular, descreve exatamente uma característica,
+  nunca implica mais de uma característica ao mesmo tempo (um campo
+  chamado `nome_e_telefone` é sinal de que precisa virar dois campos).
+- Usar o mesmo nome de campo pra representar o mesmo conceito em toda tabela
+  onde ele aparece — inconsistência de nome entre tabelas é uma das causas
+  mais comuns de bug de integração e consulta errada.
+
+## 4. Chaves
+
+- Toda tabela tem exatamente uma chave primária — nem zero, nem mais de
+  uma.
+- Uma boa chave (primária ou candidata) precisa: não ser composta por
+  múltiplas partes desnecessariamente, ter valor único, nunca ser nula,
+  nunca expor dado sensível diretamente, e ter valor que raramente ou nunca
+  precisa mudar depois de criado.
+- Chave estrangeira deve ter o mesmo nome e a mesma especificação de tipo
+  da chave primária que ela referencia — isso deixa imediatamente claro,
+  ao ler o schema, qual campo aponta pra onde.
+- Preferir um identificador não-sequencial como chave primária exposta
+  publicamente (numa URL, por exemplo) — um ID incremental simples revela
+  quantidade de registros e permite adivinhar outros IDs válidos, o que é
+  um problema de segurança e privacidade além de estético.
+- Para bancos PostgreSQL (usado pelo Supabase): usar UUID ordenado por
+  tempo (uuidv7) como padrão de chave primária em vez de UUID aleatório
+  (v4) ou serial incremental simples — o UUID ordenado combina a vantagem
+  de não ser previsível/enumerável com a vantagem de não fragmentar o
+  índice do banco (um problema real de performance que UUID aleatório
+  causa em tabelas grandes). Usar serial incremental simples apenas em
+  tabela que nunca será exposta por ID em rota pública nem sincronizada
+  entre múltiplas fontes de dados.
+
+## 5. Relacionamentos entre tabelas
+
+- Antes de criar um relacionamento, definir claramente o tipo: um-para-um,
+  um-para-muitos, ou muitos-para-muitos — o tipo errado leva a estrutura de
+  chave estrangeira errada.
+- Relacionamento muitos-para-muitos sempre precisa de uma tabela
+  intermediária própria (tabela de associação) — nunca tentar resolver
+  isso guardando lista de IDs dentro de um campo.
+- Definir explicitamente a regra de exclusão de cada relacionamento
+  (o que acontece com os registros filhos quando o registro pai é
+  excluído). As opções e quando usar cada uma:
+  - **Impedir exclusão** (marcar como inativo em vez de apagar) — quando o
+    registro pai nunca deve sumir de fato (ex.: usuário que já fez pedido)
+  - **Restringir** (bloquear exclusão até os filhos serem removidos
+    manualmente primeiro) — quando a exclusão em cascata seria perigosa
+    demais pra ser automática
+  - **Cascata** (excluir os filhos junto automaticamente) — quando os
+    registros filhos não fazem sentido sem o pai (ex.: itens de um pedido
+    quando o pedido é cancelado)
+  - **Anular** (zerar a referência nos filhos, mantendo o registro) — quando
+    o filho pode existir de forma independente do pai
+  - Nunca deixar essa decisão implícita ou "pra resolver depois" — decidir
+    a regra de exclusão é parte obrigatória de desenhar o relacionamento,
+    não um detalhe de implementação posterior.
+
+## 6. Tipos de dado e formato
+
+- Usar tipo de data/hora com timezone (`timestamptz` no Postgres) pra
+  qualquer evento que aconteceu num momento específico — nunca guardar
+  data/hora sem timezone, porque isso gera ambiguidade e bug sutil quando
+  usuários estão em fusos diferentes (o mesmo tipo de bug de streak/fuso
+  horário que já apareceu em projeto anterior).
+- Usar tipo numérico decimal exato (`numeric`) pra qualquer valor
+  monetário — nunca usar ponto flutuante (`float`), que tem erro de
+  arredondamento inaceitável pra dinheiro.
+- Distinguir campo ausente (não enviado) de campo nulo (enviado como vazio
+  intencionalmente) — são estados diferentes que podem exigir tratamento
+  diferente dependendo da regra de negócio.
+- JSONB (campo de dado semi-estruturado) deve ser usado só pra dado
+  genuinamente flexível ou de formato variável — qualquer campo que vai ser
+  buscado ou filtrado com frequência deve ser promovido pra coluna própria
+  e tipada, com índice, em vez de ficar escondido dentro de um JSONB (
+  consultar dentro de JSON é mais lento que consultar uma coluna normal, a
+  não ser que se crie um índice específico pra isso).
+
+## 7. Índices
+
+- Criar índice em toda coluna usada com frequência em filtro (`WHERE`),
+  ordenação (`ORDER BY`), ou junção entre tabelas (`JOIN`) — sem índice,
+  cada consulta desse tipo obriga o banco a examinar a tabela inteira linha
+  por linha.
+- Não criar índice em tudo por padrão — cada índice acelera leitura mas
+  desacelera escrita (todo insert/update precisa atualizar os índices
+  também) e ocupa espaço. Índice deve ser adicionado com base em consulta
+  real que a aplicação faz, não de forma especulativa.
+- Sempre verificar o plano de execução da consulta (`EXPLAIN ANALYZE`)
+  antes de assumir que um índice resolveu um problema de performance — a
+  suposição de que um índice ajuda sem medir é uma causa comum de
+  otimização que não muda nada na prática.
+
+## 8. Quando é aceitável quebrar as regras (desnormalizar)
+
+Bender as regras de modelagem ideal por performance deve ser **último
+recurso**, não primeira resposta a um problema de lentidão — e a razão é
+que quebrar a regra na estrutura sempre troca um problema de performance
+por um problema de integridade de dado (inconsistência, duplicidade,
+dificuldade de manter sincronizado).
+
+- Antes de desnormalizar por performance, esgotar alternativas primeiro:
+  revisar se os índices certos existem, revisar se a consulta em si está
+  bem escrita, revisar se o problema é mesmo de schema ou de outra camada
+  da aplicação.
+- Se ainda assim for necessário desnormalizar, documentar explicitamente: o
+  motivo, qual regra de modelagem está sendo quebrada, o que exatamente foi
+  alterado, e o efeito esperado — isso permite reverter depois se o ganho
+  de performance não compensar o custo de integridade.
+- Banco de dados majoritariamente analítico/relatório (que não sofre
+  updates constantes, só leitura em massa) é o cenário mais aceitável pra
+  relaxar essas regras — banco transacional (onde dado muda o tempo todo)
+  deve manter a estrutura normalizada com muito mais rigor.
+
+## Anti-padrões específicos a evitar
+
+- Campo que guarda lista separada por vírgula dentro de uma coluna de texto
+  (`tags: "urgente,vip,pendente"`) em vez de tabela relacionada
+- Campo calculado guardado como dado fixo que pode ficar desatualizado
+  (ex.: `total_pedido` salvo separadamente do cálculo real dos itens)
+- Chave estrangeira sem regra de exclusão definida, deixando órfão possível
+- ID sequencial simples exposto em rota pública, permitindo adivinhar
+  registros vizinhos
+- Campo de data/hora sem timezone armazenado
+- Valor monetário guardado como número de ponto flutuante
+- Tabela que mistura dois assuntos diferentes por conveniência (ex.: dados
+  de usuário e dados de assinatura numa tabela só, quando são ciclos de
+  vida diferentes)
+
+## Como pedir a modelagem de um domínio novo
+
+```
+Quero modelar o banco de dados para [domínio/funcionalidade]. Para cada
+entidade que você identificar:
+1. Ela representa um único assunto? Liste os campos e confirme que cada um
+   é atômico (não multiparte, não multivalorado, não calculado).
+2. Qual é a chave primária, e ela seguirá o padrão de UUID ordenado por
+   tempo (uuidv7)?
+3. Quais relacionamentos existem com outras entidades, de que tipo
+   (1:1, 1:N, N:N), e qual é a regra de exclusão de cada um?
+4. Quais campos serão consultados/filtrados com frequência e precisam de
+   índice desde o início?
+```
+
+## Checklist de revisão de um schema existente
+
+- [ ] Toda tabela representa um único assunto, sem mistura de conceitos?
+- [ ] Toda tabela tem exatamente uma chave primária?
+- [ ] Toda chave estrangeira tem regra de exclusão definida explicitamente?
+- [ ] Nenhum campo guarda múltiplos valores ou múltiplas informações
+      concatenadas?
+- [ ] Nenhum campo calculado é guardado sem necessidade real (que poderia
+      ser derivado em consulta)?
+- [ ] Campo de data/hora usa tipo com timezone, e valor monetário usa tipo
+      decimal exato?
+- [ ] Colunas usadas em filtro/ordenação/junção frequente têm índice?
+- [ ] Se alguma regra foi quebrada por performance, isso está documentado
+      com motivo e efeito esperado?

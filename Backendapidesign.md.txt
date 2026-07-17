@@ -1,0 +1,233 @@
+---
+name: backend-api-design
+description: >
+  Use when designing, naming, or reviewing any backend API endpoint or
+  resource — REST routes, request/response shapes, pagination, filtering,
+  batch operations, versioning, or error handling. Trigger on requests like
+  "cria a rota para X", "como estruturar essa API", "como nomear esse
+  endpoint/campo", "como paginar essa lista", "como versionar essa API sem
+  quebrar o app", "como devo tratar esse erro na API", or any request to
+  design a backend endpoint or data contract between frontend and backend.
+---
+
+# Backend / API Design — Regras Objetivas
+
+Regras práticas para desenhar rotas, nomes, tipos de dado e comportamento
+de API de forma consistente e previsível — a camada que o frontend (e
+qualquer app cliente) vai depender por muito tempo. Mudar uma API já em uso
+é caro; decidir bem na primeira vez evita retrabalho estrutural depois.
+
+## Princípio central
+
+**Uma API boa é operacional, expressiva, simples e previsível.** Antes de
+qualquer decisão de nome, rota ou formato, perguntar: um desenvolvedor que
+nunca viu essa API consegue prever o próximo nome/comportamento só olhando
+o padrão já estabelecido? Se a resposta é não, a decisão precisa ser
+revista — inconsistência em API se paga com bug de integração meses depois.
+
+## 1. Nomenclatura
+
+- Nome de recurso, campo e ação precisa ser expressivo (dá pra entender o
+  que é sem contexto extra) e simples (sem palavra que não adiciona
+  clareza) ao mesmo tempo — nem `UserSpecifiedPreferences` (longo demais)
+  nem `Preferences` (vago demais). O ponto certo costuma ser
+  `UserPreferences`.
+- Usar o MESMO nome pra representar o MESMO conceito em toda a API, e nomes
+  diferentes só quando o conceito é realmente diferente. Alternar entre
+  `topic` e `messagingTopic` pro mesmo campo em lugares diferentes é o tipo
+  de inconsistência que gera bug de integração silencioso.
+- Ações (endpoints/métodos) devem usar o modo imperativo — `CreateBook`,
+  não `IsBookValid` fingindo ser uma checagem local quando na verdade é uma
+  chamada de rede.
+- Preposição no nome de um recurso (`BookWithAuthor`) costuma ser sintoma
+  de problema de design maior — geralmente indica que o que você precisa é
+  de um parâmetro de resposta parcial/filtro, não um recurso novo pra cada
+  combinação possível.
+- Sempre incluir a unidade no nome de campo numérico quando a unidade não é
+  óbvia (`sizeBytes`, `durationSeconds`) em vez de nome genérico (`size`,
+  `duration`) — ambiguidade de unidade já causou incidentes graves em
+  sistemas reais (conversão errada entre sistemas métricos é uma causa
+  clássica de bug caro).
+- Definir e documentar o padrão de escrita usado (camelCase, snake_case) e
+  aplicar de forma consistente em toda a API — a escolha específica importa
+  menos do que a consistência.
+
+## 2. Estrutura de recursos e relações
+
+- Antes de criar uma relação entre dois recursos, perguntar se ela é
+  realmente necessária pra funcionalidade da API — conectar tudo com tudo
+  parece flexível mas aumenta complexidade sem necessidade real.
+- Decidir entre guardar uma relação como referência (só o ID) ou embutir o
+  dado copiado com base em uma pergunta: esse dado precisa ser modificado
+  de forma atômica e independente? Se sim, referência. Se é só leitura
+  conjunta, embutir pode ser mais simples.
+- Evitar hierarquias profundas de recurso (recurso dentro de recurso dentro
+  de recurso, 4+ níveis) — dificulta entendimento e manutenção da API.
+- Campo que guarda referência a outro recurso deve ser string terminada em
+  algo como `ID` (ex.: `authorId`); campo que guarda cópia do dado
+  referenciado deve omitir esse sufixo — isso deixa claro pra quem lê se
+  está vendo um ponteiro ou uma cópia (que pode estar desatualizada).
+
+## 3. Tipos de dado e valores
+
+- Distinguir valor ausente (campo não enviado) de valor nulo (campo enviado
+  como vazio de propósito) — são conceitos diferentes e devem ser tratados
+  de forma diferente.
+- Campo booleano deve ser nomeado de forma que `true` sempre signifique o
+  estado positivo (`enableFeature`, não `disableFeature`) — evita
+  ambiguidade de dupla negação (`disableFeature: false`).
+- Número que pode ultrapassar a faixa segura de representação em ponto
+  flutuante (valores monetários grandes, IDs numéricos grandes) deve ser
+  serializado como string, não como número nativo.
+- Evitar enumeração fixa (enum) quando o conjunto de valores pode crescer —
+  preferir string validada no servidor, o que evita quebrar clientes
+  antigos toda vez que um valor novo é adicionado.
+- Toda lista e todo mapa retornado por uma API deve ter um limite máximo de
+  itens — sem isso, uma coleção que cresce sem controle pode derrubar
+  performance ou até a API inteira.
+
+## 4. Métodos padrão vs. métodos customizados
+
+- Operações padrão (criar, ler, atualizar, deletar) devem se comportar de
+  forma idêntica e previsível em toda a API — se `criar` em um recurso
+  retorna o objeto criado, `criar` em outro recurso também deve retornar.
+- Operação idempotente é aquela que pode ser chamada várias vezes com o
+  mesmo resultado — criar, ler, atualizar, e deletar geralmente devem ser
+  seguras nesse sentido, EXCETO deletar, que por natureza não é idempotente
+  da forma ingênua (deletar de novo algo já deletado é um estado diferente).
+- Operação que foge do padrão (ex.: "arquivar", "duplicar", "enviar
+  convite") deve ser tratada como método customizado — usar POST, nunca
+  PATCH, e ter efeito colateral documentado explicitamente (efeito
+  colateral é proibido nos métodos padrão, mas permitido nos customizados
+  desde que bem documentado).
+
+## 5. Paginação e filtro
+
+- Nunca retornar uma lista grande de uma vez sem paginação — usar tamanho
+  máximo de página + token de próxima página, não offset numérico simples
+  (offset quebra quando itens são inseridos/removidos entre uma página e
+  outra).
+- Pedir explicitamente um **tamanho máximo** de página, não um tamanho
+  exato — a API pode retornar menos itens que o pedido mesmo havendo mais
+  disponíveis (por limite interno de performance), então o cliente nunca
+  deve assumir "recebi menos que pedi = acabou a lista". O fim real da
+  lista é indicado pela ausência de um token de próxima página, nunca pela
+  contagem de itens retornados.
+- Suportar filtro na listagem em vez de forçar o cliente a buscar tudo e
+  filtrar localmente — isso economiza tráfego e processamento em ambos os
+  lados.
+- Erro de sintaxe de filtro deve ser reportado imediatamente, nunca
+  ignorado silenciosamente (um filtro mal formado que "não dá erro mas não
+  filtra nada" é uma das fontes de bug mais difíceis de rastrear).
+
+## 6. Operações em lote e exclusão em massa
+
+- Endpoint que opera em várias entidades de uma vez (lote) deve ser
+  completamente atômico — ou tudo é aplicado, ou nada é, nunca um estado
+  parcial que deixa o sistema inconsistente.
+- O resultado de uma operação em lote deve vir na mesma ordem em que os
+  itens foram enviados, pra que o cliente consiga correlacionar
+  resultado com pedido sem ambiguidade.
+- Exclusão em massa por critério (ex.: "deletar todos os pedidos
+  cancelados há mais de 90 dias") deve, por padrão, rodar em modo de
+  validação primeiro (mostrar quantos itens seriam afetados) antes de
+  executar de fato — evita desastre de um filtro mal escrito apagando mais
+  do que deveria.
+
+## 7. Versionamento e compatibilidade
+
+- Uma mudança é retrocompatível quando código escrito pra versão anterior
+  continua funcionando sem alteração. Mudanças que parecem inofensivas
+  (corrigir um bug de comportamento, mudar um valor default) podem quebrar
+  cliente que dependia (mesmo sem saber) do comportamento antigo — avaliar
+  todo campo/comportamento alterado sob essa ótica antes de alterar uma API
+  já em produção.
+- Definir a estratégia de versionamento (na URL, no header, ou por campo)
+  antes do primeiro cliente externo (app mobile, terceiro) começar a
+  consumir a API — trocar estratégia depois que já existe cliente em
+  produção é o tipo de mudança estrutural mais caro de fazer.
+- Preferir adicionar campo novo opcional a alterar o significado de um
+  campo existente — adicionar é quase sempre retrocompatível, alterar quase
+  nunca é.
+
+## 8. Exclusão segura e reversível
+
+- Preferir exclusão suave (marcar como excluído sem apagar de fato) a
+  exclusão definitiva imediata, principalmente pra dados que o usuário
+  criou com esforço — permite desfazer, e reduz o dano de exclusão
+  acidental (seja por bug do cliente ou erro do usuário).
+- Recurso com exclusão suave precisa de rota explícita pra restaurar
+  (desfazer) e outra pra remover de forma definitiva depois — não misturar
+  as duas coisas num único endpoint de "deletar".
+
+## 9. Confiabilidade: idempotência de requisição e retry
+
+- Toda requisição que causa efeito (criar, pagar, enviar) deve aceitar um
+  identificador único gerado pelo cliente, permitindo que a API detecte e
+  ignore chamadas duplicadas — essencial porque o cliente nunca tem certeza
+  absoluta se uma requisição que falhou por timeout foi processada ou não
+  antes de cair a conexão.
+- Retry automático (tentar de novo depois de falha) só deve acontecer para
+  erros temporários (timeout, limite de taxa excedido) — nunca pra erros
+  de estado permanente (acesso negado, recurso não encontrado), porque
+  tentar de novo não muda o resultado e só desperdiça recurso.
+- Todo retry automático deve usar espera crescente entre tentativas (não
+  tentar de novo instantaneamente em sequência) com um pouco de variação
+  aleatória no tempo de espera — evita que muitos clientes tentem de novo
+  exatamente ao mesmo tempo e sobrecarreguem o servidor de uma vez.
+
+## 10. Autenticação de requisição
+
+Toda requisição autenticada precisa garantir três coisas: prova de origem
+(veio de quem diz que veio), prova de integridade (não foi alterada no
+caminho), e não-repúdio (quem enviou não pode negar depois que enviou).
+
+- Nunca confiar em identidade declarada sem verificação — autenticação real
+  depende da posse comprovável de uma chave/segredo, não de um campo que
+  o cliente simplesmente afirma ser verdade.
+- Erro de autenticação/autorização deve retornar código de status distinto
+  de erro de dado não encontrado — misturar os dois (retornar sempre "não
+  encontrado" por segurança) tem seu lugar em casos sensíveis, mas deve ser
+  decisão consciente, não acidente de implementação.
+
+## Anti-padrões específicos a evitar
+
+- Endpoint que retorna nome de campo diferente pro mesmo conceito em rotas
+  diferentes (`topic` numa rota, `messagingTopic` em outra)
+- Retornar lista completa sem paginação "porque por enquanto é pequena" —
+  ela cresce, e nesse ponto já tem cliente dependendo do formato sem página
+- Endpoint de deleção em massa que executa direto, sem etapa de validação
+  prévia mostrando o que seria afetado
+- Campo numérico de medida sem unidade no nome (`size`, `duration`,
+  `amount`) quando a unidade não é universalmente óbvia
+- Alterar o comportamento ou tipo de um campo existente em vez de
+  adicionar um campo novo, quebrando cliente em produção sem aviso
+- Retry automático aplicado cegamente a qualquer tipo de erro, incluindo
+  erros permanentes que nunca vão ter sucesso ao repetir
+
+## Como aplicar num pedido de API nova
+
+```
+Quero desenhar a API para [funcionalidade]. Para cada endpoint, defina:
+1. É uma operação padrão (criar/ler/atualizar/deletar) ou customizada?
+   Se customizada, documente o efeito colateral explicitamente.
+2. Nomes de recurso e campo seguem o mesmo padrão já usado no resto da API?
+3. Se retorna lista, como funciona a paginação (tamanho máximo + token)?
+4. Essa operação precisa ser idempotente? Como o cliente evita duplicidade
+   em caso de retry?
+5. Essa mudança é retrocompatível com qualquer cliente que já exista?
+```
+
+## Checklist de revisão de uma API existente
+
+- [ ] Nomes de recurso/campo seguem o mesmo padrão de nomenclatura em toda
+      a API, ou há inconsistência entre rotas?
+- [ ] Toda lista retornada tem paginação, com fim indicado por ausência de
+      token, não por contagem de itens?
+- [ ] Métodos padrão (criar/ler/atualizar/deletar) se comportam de forma
+      consistente entre recursos diferentes?
+- [ ] Operações com efeito (criar, pagar, enviar) aceitam identificador de
+      idempotência do cliente?
+- [ ] Campos numéricos de medida têm unidade clara no nome?
+- [ ] Exclusão de dado importante é suave (reversível) ou definitiva
+      imediata sem chance de desfazer?
